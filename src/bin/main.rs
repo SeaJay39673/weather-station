@@ -7,23 +7,19 @@
 )]
 #![deny(clippy::large_stack_frames)]
 
-use bt_hci::controller::ExternalController;
-use defmt::{error, info};
+use defmt::{info};
 use embassy_executor::Spawner;
-use embassy_time::{Duration, Timer};
-use embedded_dht_rs::SensorError;
 use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::gpio::Flex;
 use esp_println as _;
 use esp_radio::ble::controller::BleConnector;
-use trouble_host::prelude::*;
 
 extern crate alloc;
 
-const CONNECTIONS_MAX: usize = 1;
-const L2CAP_CHANNELS_MAX: usize = 1;
+mod sensor;
+mod bluetooth;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
@@ -68,43 +64,18 @@ async fn main(spawner: Spawner) -> ! {
     //         .expect("Failed to initialize Wi-Fi controller");
     // let _wifi_interface = esp_radio::wifi::Interface::station();
     // // find more examples https://github.com/embassy-rs/trouble/tree/main/examples/esp32
-    // let transport = BleConnector::new(peripherals.BT, Default::default()).unwrap();
-    // let ble_controller = ExternalController::<_, 1>::new(transport);
-    // let mut resources: HostResources<_, DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX> =
-    //     HostResources::new();
-    // let _stack = trouble_host::new(ble_controller, &mut resources).build();
+    let transport = match BleConnector::new(peripherals.BT, Default::default()) {
+        Ok(transport) => transport,
+        Err(e) => panic!("{:?}", e),
+    };
 
-    // TODO: Spawn some tasks
-    // let _ = spawner;
+    let bluetooth_spawn_token = match bluetooth::run_bluetooth(transport) {
+        Ok(spawn_token) => spawn_token,
+        Err(e) => panic!("{:?}", e)
+    };
+    
+    spawner.spawn(bluetooth_spawn_token);
 
-    let mut dht22_pin = Flex::new(peripherals.GPIO4);
-    dht22_pin.apply_output_config(
-        &esp_hal::gpio::OutputConfig::default()
-            .with_drive_mode(esp_hal::gpio::DriveMode::OpenDrain)
-            .with_pull(esp_hal::gpio::Pull::None),
-    );
-    dht22_pin.set_output_enable(true);
-    dht22_pin.set_input_enable(true);
-    dht22_pin.set_high();
-
-    let mut dht22 = embedded_dht_rs::dht22::Dht22::new(dht22_pin, esp_hal::delay::Delay::new());
-
-    loop {
-        match dht22.read() {
-            Ok(sensor_reading) => {
-                info!("Temp: {:?}F", (&sensor_reading.temperature * (9.0 / 5.0)) + 32.0);
-                info!("Humidity: {:?}%", &sensor_reading.humidity);
-            },
-            Err(e) => {
-                match e {
-                    SensorError::ChecksumMismatch => error!("Checksum Mismatch"),
-                    SensorError::PinError => error!("Pin Error"),
-                    SensorError::Timeout => error!("Timeout")
-                }
-            }
-        }
-        Timer::after(Duration::from_secs(5)).await;
-    }
-
+    sensor::read_sensor_data(Flex::new(peripherals.GPIO4)).await
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.2.2/examples
 }

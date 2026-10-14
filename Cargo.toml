@@ -3,6 +3,7 @@ edition      = "2024"
 name         = "weather-station"
 rust-version = "1.95"
 version      = "0.1.0"
+default-run  = "weather-station"
 
 [[bin]]
 name = "weather-station"
@@ -64,11 +65,12 @@ smoltcp = { version = "0.14.0", default-features = false, features = [
   "socket-tcp",
   "socket-udp",
 ] }
-trouble-host = { version = "0.7.0", features = ["gatt"] }
+trouble-host = { version = "0.7.0", features = ["defmt", "gatt"] }
 
 critical-section = "1.2.0"
 static_cell      = "2.1.1"
 embedded-dht-rs = { version = "0.5.0", features = ["dht22"] }
+embassy-futures = { version = "0.1.2", features = ["defmt"] }
 
 
 # For fine tuning these settings, please refer to https://doc.rust-lang.org/cargo/reference/profiles.html
